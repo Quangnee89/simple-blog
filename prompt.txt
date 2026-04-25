@@ -1,0 +1,366 @@
+Bạn là một Senior AI Software Engineer và Technical Delivery Assistant. Nhiệm vụ của bạn là triển khai hoàn chỉnh Bài thực hành 4: “SUPABASE — BACKEND-AS-A-SERVICE & AUTHENTICATION” thành một project có thể chạy được, đúng đề, rõ ràng, dễ nộp và dễ kiểm tra [file:1].
+
+MỤC TIÊU TỔNG THỂ
+Hãy xây dựng một ứng dụng full-stack tên `simple-blog` bằng Next.js App Router + TypeScript + Tailwind CSS + Supabase, bám sát nội dung bài thực hành trong tài liệu. Ứng dụng phải thể hiện đầy đủ các nội dung cốt lõi của bài: thiết kế schema database, cấu hình Row Level Security (RLS), tích hợp authentication với Supabase, triển khai CRUD cho bài viết, và phần bình luận bonus/realtime nếu phù hợp [file:1].
+
+NGUYÊN TẮC THỰC HIỆN
+- Bám sát đề bài, không tự ý đổi phạm vi tính năng hoặc đổi công nghệ chính nếu không thật sự cần thiết.
+- Ưu tiên tính đúng, đầy đủ, dễ chạy, dễ hiểu, dễ nộp bài.
+- Không over-engineer, không thêm kiến trúc phức tạp ngoài phạm vi môn học.
+- Nếu phát hiện chi tiết trong đề có thể gây lỗi do khác biệt phiên bản Next.js hoặc Supabase hiện tại, hãy chỉnh theo hướng tương thích nhưng vẫn giữ nguyên tinh thần bài học.
+- Mọi phần không thể tự động hoàn tất do phụ thuộc tài khoản thật của người dùng (Supabase project, GitHub OAuth, email confirmation, environment variables thực tế) phải được ghi chú rõ là bước thủ công.
+- Không dùng service role key ở client.
+- Mọi truy vấn dữ liệu phải phù hợp với RLS.
+- Bảo đảm project dùng App Router, không dùng Pages Router [file:1].
+
+BỐI CẢNH BÀI THỰC HÀNH
+Ứng dụng cần xây là “Simple Blog”, cho phép:
+- người dùng đăng ký tài khoản
+- đăng nhập bằng email/password
+- đăng nhập bằng GitHub OAuth
+- quản lý bài viết cá nhân
+- tạo, sửa, xóa bài viết của chính mình
+- hiển thị danh sách bài viết công khai ở trang chủ
+- xem chi tiết bài viết
+- bình luận vào bài viết
+- có thể mở rộng realtime comments ở phần bonus [file:1]
+
+PHẠM VI BẮT BUỘC PHẢI CÓ
+
+1. Khởi tạo project
+- Tạo project Next.js tên `simple-blog`
+- Dùng TypeScript
+- Dùng Tailwind CSS
+- Dùng App Router
+- Có thể dùng Turbopack nếu phù hợp
+- Cài các package cần thiết:
+  - `@supabase/supabase-js`
+  - `@supabase/ssr`
+
+2. Biến môi trường
+Tạo file `.env.local` với các biến:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+3. Supabase helper utilities
+Phải có các file sau:
+- `src/lib/supabase/client.ts`
+- `src/lib/supabase/server.ts`
+- `src/lib/supabase/middleware.ts`
+- `src/middleware.ts`
+
+Yêu cầu:
+- `client.ts` dùng cho client components
+- `server.ts` dùng cho server components, server actions, route handlers
+- middleware phải refresh session đúng cách
+- middleware phải bảo vệ route `/dashboard`, `/dashboard/new`, `/dashboard/edit/[id]`
+- middleware phải redirect user đã đăng nhập khỏi `/login` và `/register` [file:1]
+
+4. Database schema
+Tạo đầy đủ SQL để chạy trong Supabase SQL Editor cho các thành phần sau:
+
+4.1. Bảng `profiles`
+- `id uuid primary key references auth.users on delete cascade`
+- `display_name text`
+- `avatar_url text`
+- `created_at timestamptz default timezone('utc', now()) not null`
+- `updated_at timestamptz default timezone('utc', now()) not null`
+
+4.2. Enum `post_status`
+- gồm hai giá trị: `draft`, `published`
+
+4.3. Bảng `posts`
+- `id uuid primary key default gen_random_uuid()`
+- `author_id uuid not null references public.profiles on delete cascade`
+- `title text not null`
+- `slug text not null unique`
+- `content text`
+- `excerpt text`
+- `status post_status default 'draft' not null`
+- `created_at timestamptz default timezone('utc', now()) not null`
+- `updated_at timestamptz default timezone('utc', now()) not null`
+- `published_at timestamptz`
+
+4.4. Bảng `comments`
+- `id uuid primary key default gen_random_uuid()`
+- `post_id uuid not null references public.posts on delete cascade`
+- `author_id uuid not null references public.profiles on delete cascade`
+- `content text not null`
+- `created_at timestamptz default timezone('utc', now()) not null`
+
+4.5. Indexes, comments, và relationship
+- Tạo index phù hợp như trong đề cho các trường hay query
+- Có SQL rõ ràng, sạch, chạy liền mạch [file:1]
+
+5. Functions và triggers
+Phải triển khai đầy đủ:
+- `handle_new_user()` để tự tạo profile khi user đăng ký
+- trigger `on_auth_user_created`
+- `generate_slug(title text)` để tạo slug
+- `set_post_slug()` để tự gán slug trước insert
+- `update_updated_at()` để cập nhật trường `updated_at`
+- trigger cho `profiles`
+- trigger cho `posts` [file:1]
+
+6. Row Level Security (RLS)
+Phải bật RLS cho:
+- `profiles`
+- `posts`
+- `comments`
+
+Phải viết đầy đủ policies như sau:
+
+6.1. `profiles`
+- ai cũng có thể `select`
+- authenticated user chỉ `update` profile của chính mình
+
+6.2. `posts`
+- ai cũng xem được bài `published`
+- author xem được tất cả bài của mình kể cả `draft`
+- authenticated user được `insert` post
+- author chỉ được `update` post của mình
+- author chỉ được `delete` post của mình
+
+6.3. `comments`
+- ai cũng xem được comments thuộc bài viết đã `published`
+- authenticated user được `insert` comment
+- user chỉ được `delete` comment của mình [file:1]
+
+Ngoài ra:
+- Nếu hợp lý, thêm phần SQL test RLS hoặc ghi chú cách test trong SQL Editor.
+- Không thay đổi logic phân quyền gốc của đề nếu không có lý do rất rõ ràng.
+
+7. Authentication
+Phải triển khai đầy đủ flow xác thực:
+
+7.1. Register
+- route: `/register`
+- form gồm:
+  - display name
+  - email
+  - password
+- dùng `supabase.auth.signUp`
+- truyền `display_name` vào user metadata
+- xử lý loading/error rõ ràng
+- chuyển hướng sau khi đăng ký thành công [file:1]
+
+7.2. Login
+- route: `/login`
+- login bằng email/password với `supabase.auth.signInWithPassword`
+- login bằng GitHub với `supabase.auth.signInWithOAuth`
+- có loading/error rõ ràng [file:1]
+
+7.3. OAuth callback
+- route: `/auth/callback`
+- lấy `code` từ query params
+- exchange code để tạo session
+- redirect về `/dashboard` [file:1]
+
+7.4. Logout
+- tạo server action logout
+- sign out khỏi Supabase
+- redirect về `/login` [file:1]
+
+7.5. Header
+- có header dùng chung trong layout
+- nếu chưa đăng nhập: hiện link Trang chủ, Đăng nhập, Đăng ký
+- nếu đã đăng nhập: hiện Trang chủ, Dashboard, Đăng xuất [file:1]
+
+8. CRUD bài viết
+Phải triển khai đầy đủ CRUD cho `posts`:
+
+8.1. Trang chủ `/`
+- public
+- hiển thị danh sách bài viết đã `published`
+- join với `profiles` để hiện tên tác giả
+- sắp xếp theo `published_at` giảm dần [file:1]
+
+8.2. Dashboard `/dashboard`
+- protected
+- hiển thị toàn bộ bài viết của user hiện tại, gồm cả draft
+- có nút tạo bài mới
+- có danh sách bài viết với trạng thái draft/published [file:1]
+
+8.3. Tạo bài mới `/dashboard/new`
+- protected
+- form gồm:
+  - title
+  - excerpt
+  - content
+  - status
+- khi status là `published` thì set `published_at`
+- author_id phải là user hiện tại [file:1]
+
+8.4. Chỉnh sửa bài viết `/dashboard/edit/[id]`
+- protected
+- chỉ author mới được sửa
+- query đúng theo `id` và `author_id`
+- nếu không có quyền hoặc không tồn tại thì xử lý notFound hợp lý [file:1]
+
+8.5. Xóa bài viết
+- nút xóa ở dashboard
+- xác nhận trước khi xóa
+- chỉ author được xóa nhờ RLS [file:1]
+
+8.6. Chi tiết bài viết `/posts/[slug]`
+- public
+- chỉ hiển thị bài `published`
+- hiển thị title, author, publish date, content
+- render nội dung theo cách đơn giản, rõ ràng; nếu cần có thể render từng paragraph theo newline như đề
+- có generateMetadata nếu phù hợp [file:1]
+
+9. Comments
+Phải triển khai phần comments ở mức usable:
+
+9.1. Comment form
+- chỉ user đăng nhập mới được comment
+- nếu chưa đăng nhập thì hiện nhắc đăng nhập
+- insert vào bảng `comments` với:
+  - `post_id`
+  - `author_id`
+  - `content`
+
+9.2. Comment list
+- hiển thị danh sách comment của bài viết
+- join với `profiles` để lấy tên người bình luận
+- sắp xếp theo `created_at` tăng dần [file:1]
+
+9.3. Tích hợp comments vào trang chi tiết bài viết
+- hiển thị số lượng comment
+- hiển thị form và danh sách comment [file:1]
+
+10. Bonus realtime
+Nếu triển khai được gọn gàng, hãy thêm:
+- `RealtimeComments`
+- subscribe vào bảng `comments`
+- cập nhật UI khi có comment mới
+- ghi chú cần bật replication cho table `comments` trên Supabase Dashboard [file:1]
+
+11. Types
+Phải có file:
+- `src/types/database.ts`
+
+Bao gồm tối thiểu:
+- `PostStatus`
+- `Profile`
+- `Post`
+- `Comment`
+
+Các type phải khớp với schema và các dữ liệu join cơ bản [file:1].
+
+12. Cấu trúc project
+Hãy giữ đúng tinh thần cấu trúc như đề:
+- `src/app/...`
+- `src/components/auth/...`
+- `src/components/dashboard/...`
+- `src/components/layout/...`
+- `src/components/posts/...`
+- `src/lib/supabase/...`
+- `src/types/database.ts`
+- `middleware.ts` [file:1]
+
+YÊU CẦU CHẤT LƯỢNG CODE
+- Code rõ ràng, nhất quán, dễ đọc.
+- Đúng phân biệt server component và client component.
+- Các file client bắt buộc có `'use client'`.
+- Không viết code thừa.
+- Tránh lặp logic nếu có thể tách gọn.
+- Xử lý error cơ bản cho auth và CRUD.
+- Ưu tiên UI đơn giản, sạch, đúng tinh thần bài thực hành.
+- Không cần thiết kế quá phức tạp.
+- Không thêm state management ngoài yêu cầu.
+- Không thêm backend riêng ngoài Supabase.
+- Không thêm thư viện không cần thiết.
+
+YÊU CẦU VỀ CÁCH TRẢ KẾT QUẢ
+Hãy trả kết quả theo đúng format sau:
+
+PHẦN A — TÓM TẮT GIẢI PHÁP
+- mô tả ngắn gọn project đã triển khai
+- liệt kê những tính năng chính đã hoàn thành
+
+PHẦN B — CÁC LỆNH CẦN CHẠY
+- liệt kê tuần tự các lệnh terminal để tạo project, cài package, chạy project
+
+PHẦN C — SQL CHO SUPABASE
+- cung cấp 1 khối SQL hoàn chỉnh, có thể copy chạy trong SQL Editor
+- SQL phải bao gồm schema, enum, function, trigger, enable RLS, policies
+
+PHẦN D — CẤU TRÚC THƯ MỤC
+- in ra cây thư mục project
+
+PHẦN E — CODE THEO TỪNG FILE
+- xuất code đầy đủ cho từng file quan trọng
+- mỗi file phải có tiêu đề đường dẫn file rõ ràng
+- không bỏ sót file cốt lõi
+
+Các file tối thiểu phải xuất:
+- `.env.local.example` hoặc nội dung mẫu `.env.local`
+- `src/lib/supabase/client.ts`
+- `src/lib/supabase/server.ts`
+- `src/lib/supabase/middleware.ts`
+- `src/middleware.ts`
+- `src/types/database.ts`
+- `src/app/layout.tsx`
+- `src/components/layout/header.tsx`
+- `src/app/page.tsx`
+- `src/app/register/page.tsx`
+- `src/components/auth/register-form.tsx`
+- `src/app/login/page.tsx`
+- `src/components/auth/login-form.tsx`
+- `src/app/auth/callback/route.ts`
+- `src/app/actions/auth.ts`
+- `src/app/dashboard/page.tsx`
+- `src/components/dashboard/post-list.tsx`
+- `src/app/dashboard/new/page.tsx`
+- `src/components/dashboard/post-form.tsx`
+- `src/app/dashboard/edit/[id]/page.tsx`
+- `src/components/dashboard/delete-post-button.tsx`
+- `src/app/posts/[slug]/page.tsx`
+- `src/components/posts/comment-form.tsx`
+- `src/components/posts/comment-list.tsx`
+- `src/components/posts/realtime-comments.tsx` nếu có bonus
+
+PHẦN F — THAO TÁC THỦ CÔNG TRÊN SUPABASE / GITHUB
+- tạo Supabase project
+- lấy URL và anon key
+- bật Email provider
+- cấu hình GitHub OAuth
+- callback URL cần điền
+- bật RLS nếu chưa làm bằng SQL
+- bật replication cho comments nếu dùng realtime [file:1]
+
+PHẦN G — CÁCH KIỂM TRA PROJECT
+- cách test register
+- cách test login
+- cách test GitHub OAuth
+- cách test route protection
+- cách test create/read/update/delete post
+- cách test comments
+- cách test RLS ở mức cơ bản [file:1]
+
+PHẦN H — GHI CHÚ TƯƠNG THÍCH
+- nêu rõ nếu có điểm nào được điều chỉnh để phù hợp với phiên bản Next.js/Supabase hiện tại
+- nêu rõ phần nào là optional/bonus
+
+RÀNG BUỘC QUAN TRỌNG
+
+- Không trả lời kiểu lý thuyết chung chung.
+- Không chỉ đưa skeleton code.
+- Không bỏ qua SQL hoặc middleware.
+- Không viết pseudocode.
+- Phải cung cấp code thực tế, đầy đủ, có thể dùng để dựng project.
+- Nếu một file quá dài, vẫn phải đưa đủ nội dung.
+- Nếu phát hiện mâu thuẫn nhỏ trong đề, hãy chọn cách triển khai an toàn nhất rồi ghi chú lại.
+- Nếu có chỗ nào cần giả định, hãy ghi rõ giả định đó.
+
+TIÊU CHÍ HOÀN THÀNH
+Chỉ được xem là hoàn thành khi:
+- project có đủ auth + CRUD + RLS + middleware + comments cơ bản
+- code khớp với cấu trúc và mục tiêu trong đề
+- có SQL chạy được trên Supabase
+- có hướng dẫn thao tác thủ công rõ ràng
+- có thể dùng trực tiếp để làm bài, nộp bài, hoặc tiếp tục code [file:1]
+
+BẮT ĐẦU NGAY.
+Hãy tạo lời giải hoàn chỉnh, có cấu trúc, chuyên nghiệp, và sẵn sàng sử dụng.
