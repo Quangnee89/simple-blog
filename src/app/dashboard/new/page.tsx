@@ -14,9 +14,14 @@ export default async function NewPostPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">✍️ Create New Post</h1>
-      <PostForm />
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">Create New Post</h1>
+        <p className="text-gray-600">Share your thoughts with the world</p>
+      </div>
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+        <PostForm />
+      </div>
     </div>
   );
 }

@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { CommentWithAuthor } from '@/types/database';
 import CommentList from './comment-list';
+import { deleteComment } from '@/app/actions/comments';
+import type { User } from '@supabase/supabase-js';
 
 interface RealtimeCommentsProps {
   postId: string;
@@ -15,7 +17,45 @@ export default function RealtimeComments({
   initialComments,
 }: RealtimeCommentsProps) {
   const [comments, setComments] = useState(initialComments);
-  const supabase = createClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(
+    null
+  );
+  const [error, setError] = useState('');
+  const supabase = useMemo(() => createClient(), []);
+
+  useEffect(() => {
+    setComments(initialComments);
+  }, [initialComments]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (active) {
+        setUser(user);
+      }
+    };
+
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) {
+        return;
+      }
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   useEffect(() => {
     const channel = supabase
@@ -45,8 +85,26 @@ export default function RealtimeComments({
             .single();
 
           if (newComment) {
-            setComments([...comments, newComment]);
+            setComments((prev) =>
+              prev.some((comment) => comment.id === newComment.id)
+                ? prev
+                : [...prev, newComment as CommentWithAuthor]
+            );
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'comments',
+          filter: `post_id=eq.${postId}`,
+        },
+        (payload) => {
+          setComments((prev) =>
+            prev.filter((comment) => comment.id !== payload.old.id)
+          );
         }
       )
       .subscribe();
@@ -54,7 +112,34 @@ export default function RealtimeComments({
     return () => {
       channel.unsubscribe();
     };
-  }, [postId, comments, supabase]);
+  }, [postId, supabase]);
 
-  return <CommentList comments={comments} postId={postId} />;
+  const handleDeleteComment = async (commentId: string) => {
+    setError('');
+    setDeletingCommentId(commentId);
+    try {
+      await deleteComment(commentId);
+      setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete comment');
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {error && (
+        <div className="bg-red-50 border border-red-200 p-3 rounded text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+      <CommentList
+        comments={comments}
+        currentUserId={user?.id}
+        deletingCommentId={deletingCommentId}
+        onDeleteComment={handleDeleteComment}
+      />
+    </div>
+  );
 }

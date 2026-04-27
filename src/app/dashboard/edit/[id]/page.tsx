@@ -30,9 +30,14 @@ export default async function EditPostPage({
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">✏️ Edit Post</h1>
-      <PostForm post={post} />
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-gray-900 mb-2">Edit Post</h1>
+        <p className="text-gray-600">Update your post content</p>
+      </div>
+      <div className="bg-white rounded-lg shadow-md border border-gray-200 p-8">
+        <PostForm post={post} />
+      </div>
     </div>
   );
 }

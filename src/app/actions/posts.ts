@@ -52,8 +52,19 @@ export async function updatePost(
   } = await supabase.auth.getUser();
   if (!user) throw new Error('Unauthorized');
 
+  const { data: existingPost, error: existingPostError } = await supabase
+    .from('posts')
+    .select('published_at')
+    .eq('id', id)
+    .eq('author_id', user.id)
+    .single();
+
+  if (existingPostError) throw existingPostError;
+
   const publishedAt =
-    status === 'published' ? new Date().toISOString() : null;
+    status === 'published'
+      ? existingPost.published_at ?? new Date().toISOString()
+      : null;
 
   const { data, error } = await supabase
     .from('posts')

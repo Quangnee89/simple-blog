@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { createComment } from '@/app/actions/comments';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { User } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 
 interface CommentFormProps {
   postId: string;
@@ -13,28 +13,82 @@ export default function CommentForm({ postId }: CommentFormProps) {
   const [content, setContent] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const supabase = createClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
-  }, [supabase.auth]);
+    let active = true;
+
+    const loadUser = async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!active) {
+        return;
+      }
+
+      setUser(user);
+      setCheckingAuth(false);
+    };
+
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) {
+        return;
+      }
+      setUser(session?.user ?? null);
+      setCheckingAuth(false);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
+    const normalizedContent = content.trim();
+    if (!normalizedContent) {
+      setError('Comment cannot be empty.');
+      return;
+    }
+
+    if (!user) {
+      setError('You must be logged in to comment.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await createComment(postId, content);
+      const { error: insertError } = await supabase.from('comments').insert({
+        post_id: postId,
+        author_id: user.id,
+        content: normalizedContent,
+      });
+
+      if (insertError) {
+        throw insertError;
+      }
+
       setContent('');
-      window.location.reload();
     } catch (err: any) {
       setError(err.message || 'Failed to post comment');
     } finally {
       setLoading(false);
     }
   };
+
+  if (checkingAuth) {
+    return null;
+  }
 
   if (!user) {
     return (
@@ -63,7 +117,7 @@ export default function CommentForm({ postId }: CommentFormProps) {
         onChange={(e) => setContent(e.target.value)}
         required
         placeholder="Write a comment..."
-        className="w-full border p-3 rounded font-sm"
+        className="w-full border p-3 rounded text-sm"
         rows={3}
       />
 

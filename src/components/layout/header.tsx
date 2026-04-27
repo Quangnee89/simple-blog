@@ -1,64 +1,85 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import type { User } from '@supabase/supabase-js';
 
 export default function Header() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    const getUser = async () => {
+    let active = true;
+
+    const loadUser = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      setUser(user);
-      setLoading(false);
+      if (active) {
+        setUser(user);
+        setLoading(false);
+      }
     };
-    getUser();
-  }, [supabase.auth]);
+    loadUser();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) {
+        return;
+      }
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setUser(null);
     router.push('/login');
+    router.refresh();
   };
 
   if (loading) return null;
 
   return (
-    <header className="bg-slate-900 text-white py-4">
-      <nav className="container mx-auto px-4 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-bold">
-          📝 Simple Blog
+    <header className="bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-lg">
+      <nav className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <Link href="/" className="text-2xl font-bold flex items-center gap-2 hover:text-blue-100 transition">
+          <span className="text-3xl">📝</span>
+          <span>SimpleBlog</span>
         </Link>
-        <div className="flex gap-4">
-          <Link href="/" className="hover:text-blue-300">
+        <div className="flex gap-6 items-center">
+          <Link href="/" className="font-medium hover:text-blue-100 transition duration-200">
             Home
           </Link>
           {user ? (
             <>
-              <Link href="/dashboard" className="hover:text-blue-300">
+              <Link href="/dashboard" className="font-medium hover:text-blue-100 transition duration-200">
                 Dashboard
               </Link>
               <button
                 onClick={handleLogout}
-                className="hover:text-red-300"
+                className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg font-medium transition duration-200"
               >
                 Logout
               </button>
             </>
           ) : (
             <>
-              <Link href="/login" className="hover:text-blue-300">
+              <Link href="/login" className="font-medium hover:text-blue-100 transition duration-200">
                 Login
               </Link>
-              <Link href="/register" className="hover:text-blue-300">
-                Register
+              <Link href="/register" className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-lg font-semibold transition duration-200">
+                Sign Up
               </Link>
             </>
           )}

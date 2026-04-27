@@ -3,6 +3,7 @@
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
 
 -- 1. Create enum for post status
 create type post_status as enum ('draft', 'published');
@@ -19,7 +20,7 @@ create table profiles (
 -- 3. Posts table
 create table posts (
   id uuid primary key default gen_random_uuid(),
-  author_id uuid not null references profiles on delete cascade,
+  author_id uuid not null references public.profiles on delete cascade,
   title text not null,
   slug text not null unique,
   excerpt text,
@@ -33,8 +34,8 @@ create table posts (
 -- 4. Comments table
 create table comments (
   id uuid primary key default gen_random_uuid(),
-  post_id uuid not null references posts on delete cascade,
-  author_id uuid not null references profiles on delete cascade,
+  post_id uuid not null references public.posts on delete cascade,
+  author_id uuid not null references public.profiles on delete cascade,
   content text not null,
   created_at timestamptz default timezone('utc', now()) not null
 );
@@ -84,7 +85,7 @@ $$ language plpgsql security definer;
 -- 9. Trigger: Create profile on new user
 create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute procedure handle_new_user();
+  for each row execute function handle_new_user();
 
 -- 10. Function: Set post slug before insert
 create or replace function set_post_slug() returns trigger as $$
@@ -99,17 +100,17 @@ $$ language plpgsql;
 -- 11. Trigger: Generate slug on post insert
 create trigger before_post_insert
   before insert on posts
-  for each row execute procedure set_post_slug();
+  for each row execute function set_post_slug();
 
 -- 12. Trigger: Update posts.updated_at on update
 create trigger on_posts_updated
   before update on posts
-  for each row execute procedure update_updated_at();
+  for each row execute function update_updated_at();
 
 -- 13. Trigger: Update profiles.updated_at on update
 create trigger on_profiles_updated
   before update on profiles
-  for each row execute procedure update_updated_at();
+  for each row execute function update_updated_at();
 
 -- 14. Enable RLS on all tables
 alter table profiles enable row level security;
@@ -154,13 +155,13 @@ create policy "Authors can delete own posts"
 -- ============================================
 -- COMMENTS TABLE POLICIES
 
--- 21. Policy: Comments visible on published posts (or own post drafts)
+-- 21. Policy: Comments visible only on published posts
 create policy "Comments visible on published posts"
   on comments for select using (
     exists (
-      select 1 from posts
+      select 1 from public.posts
       where posts.id = comments.post_id
-      and (posts.status = 'published' or auth.uid() = posts.author_id)
+      and posts.status = 'published'
     )
   );
 

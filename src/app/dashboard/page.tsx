@@ -30,18 +30,40 @@ export default async function DashboardPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-4xl font-bold">📋 My Posts</h1>
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-4xl font-bold text-gray-900">My Dashboard</h1>
+          <p className="text-gray-600 mt-2">Manage your posts and create new ones</p>
+        </div>
         <Link
           href="/dashboard/new"
-          className="bg-blue-600 text-white px-4 py-2 rounded font-semibold hover:bg-blue-700"
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition duration-200 flex items-center gap-2"
         >
-          + New Post
+          <span className="text-lg">+</span> New Post
         </Link>
       </div>
 
-      <PostList posts={posts || []} />
+      {posts && posts.length > 0 ? (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">Your Posts</h2>
+            <p className="text-gray-600 text-sm mt-1">{posts.length} post{posts.length !== 1 ? 's' : ''} total</p>
+          </div>
+          <PostList posts={posts || []} />
+        </div>
+      ) : (
+        <div className="text-center py-12 bg-blue-50 rounded-lg border-2 border-dashed border-blue-200">
+          <p className="text-gray-600 text-lg font-medium mb-2">No posts yet</p>
+          <p className="text-gray-500 mb-6">Start by creating your first post</p>
+          <Link
+            href="/dashboard/new"
+            className="inline-block bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 transition duration-200"
+          >
+            Create First Post
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
